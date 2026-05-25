@@ -1,96 +1,94 @@
 import streamlit as st
-from engine import Engine
-# from st_pages import add_page_title
+import FSM
+import engine
 
-st.set_page_config(page_title="Flower Store Chatbot", page_icon=":seedling:", layout="centered")
-# add_page_title()
+# Mengatur tata letak halaman Streamlit menjadi "wide" (lebar) agar pas untuk 2 kolom
+st.set_page_config(layout="wide")
 
-st.markdown("""
-<style>
-body, .stApp {
-    background-color: #f8f9fa;
-    color: #222;
-    font-family: 'Segoe UI', 'Roboto', 'Arial', sans-serif;
-}
-.stButton>button {
-    background: #fff;
-    border: 1px solid #ddd;
-    border-radius: 8px;
-    color: #222;
-    padding: 0.5em 1.5em;
-    font-size: 1.1em;
-    transition: box-shadow 0.2s;
-}
-.stButton>button:hover {
-    box-shadow: 0 2px 8px rgba(0,0,0,0.07);
-    border-color: #aaa;
-}
-.stTextInput>div>div>input {
-    border-radius: 8px;
-    border: 1px solid #ddd;
-    padding: 0.5em 1em;
-    font-size: 1.1em;
-}
-.stMarkdown h1, .stMarkdown h2, .stMarkdown h3 {
-    color: #222;
-}
-.menu-card {
-    background: #fff;
-    border: 1px solid #eee;
-    border-radius: 10px;
-    padding: 1em;
-    margin-bottom: 1em;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.03);
-    display: flex;
-    align-items: center;
-}
-.menu-icon {
-    width: 36px;
-    height: 36px;
-    margin-right: 1em;
-}
-</style>
-""", unsafe_allow_html=True)
+st.title("🌸 Flower Store Chatbot")
+st.write("Selamat datang di Toko Bunga! Silakan pesan bunga melalui chatbot di bawah.")
 
-if 'engine' not in st.session_state:
-    st.session_state['engine'] = Engine()
+# 1. Inisialisasi State Session jika belum ada
+if "messages" not in st.session_state:
+    st.session_state.messages = []
+if "chat_state" not in st.session_state:
+    st.session_state.chat_state = "MENU_UTAMA"
+if "session_data" not in st.session_state:
+    st.session_state.session_data = {}
 
-st.title('Flower Store Chatbot')
-st.write('Selamat datang di Toko Bunga! Silakan pesan bunga dengan mengetik di bawah.')
+# ------------------------------------------------------------------
+# 2. MEMBUAT TAMPILAN SPLIT (KOLOM KIRI & KOLOM KANAN)
+# ------------------------------------------------------------------
+kolom_kiri, kolom_kanan = st.columns([3, 2]) # Rasio lebar kolom kiri : kanan = 3 : 2
 
-user_input = st.text_input('Ketik pesan Anda di sini...')
+# === KELOLA KOLOM KIRI (Chatbot Utama) ===
+with kolom_kiri:
+    st.subheader("💬 Chat dengan Bot")
+    
+    # Bungkus riwayat chat di dalam container agar rapi
+    chat_container = st.container()
+    with chat_container:
+        for message in st.session_state.messages:
+            with st.chat_message(message["role"]):
+                st.markdown(message["content"])
 
-if user_input:
-    engine = st.session_state['engine']
-    intent = engine.detect_intent(user_input)
-    if intent == 'ASK_MENU':
-        st.subheader('Menu Bunga')
-        icons = {
-            'mawar': 'https://cdn-icons-png.flaticon.com/512/616/616494.png',
-            'melati': 'https://cdn-icons-png.flaticon.com/512/616/616492.png',
-            'tulip': 'https://cdn-icons-png.flaticon.com/512/616/616495.png',
-            'anggrek': 'https://cdn-icons-png.flaticon.com/512/616/616491.png',
-        }
-        for item, info in engine.menu_data.items():
-            st.markdown(f"""
-            <div class='menu-card'>
-                <img src='{icons[item]}' class='menu-icon' />
-                <div>
-                    <b>{item.title()}</b><br>
-                    <span style='color:#888'>{info['desc']}</span><br>
-                    <b>Rp{info['price']}</b>
-                </div>
-            </div>
-            """, unsafe_allow_html=True)
-    elif intent == 'RESET' or intent == 'CANCEL_ALL':
-        st.success('Keranjang telah dikosongkan.')
-    elif intent == 'CHEECKOUT':
-        st.success('Terima kasih atas pesanan Anda!')
+    # Handle input dari user baru
+    if user_input := st.chat_input("Ketik pesan Anda di sini..."):
+        # Tampilkan pesan user ke UI
+        with chat_container:
+            with st.chat_message("user"):
+                st.markdown(user_input)
+        st.session_state.messages.append({"role": "user", "content": user_input})
+        
+        # Panggil FSM untuk memproses input
+        bot_response, next_state, updated_data = FSM.proses_fsm(
+            user_input, 
+            st.session_state.chat_state, 
+            st.session_state.session_data
+        )
+        
+        # Update status state dan data
+        st.session_state.chat_state = next_state
+        st.session_state.session_data = updated_data
+        
+        # Tampilkan respons bot ke UI
+        with chat_container:
+            with st.chat_message("assistant"):
+                st.markdown(bot_response)
+        st.session_state.messages.append({"role": "assistant", "content": bot_response})
+        
+        # Memaksa halaman untuk merender ulang agar kolom kanan langsung ter-update
+        st.rerun()
+
+
+# === KELOLA KOLOM KANAN (Menu Toko & Real-time Keranjang) ===
+with kolom_kanan:
+    # --- Bagian Atas: Daftar Menu Toko ---
+    st.subheader("📋 Daftar Menu Bunga")
+    for bunga, harga in engine.DAFTAR_BUNGA.items():
+        st.info(f"**{bunga.capitalize()}** \n\n Harga: Rp {harga:,} / tangkai")
+    
+    st.write("---")
+    
+    # --- Bagian Bawah: Ringkasan Keranjang / Nota Sementara ---
+    st.subheader("🛒 Keranjang Belanja Anda")
+    
+    data_saat_ini = st.session_state.session_data
+    state_saat_ini = st.session_state.chat_state
+    
+    # Cek apakah user sedang berada di proses transaksi
+    if "bunga_dipilih" in data_saat_ini:
+        bunga = data_saat_ini["bunga_dipilih"].capitalize()
+        
+        st.warning(f"⏳ **Status Pemesanan:** Sedang memproses bunga **{bunga}**")
+        
+        # Buat visualisasi struk sementara jika jumlahnya nanti dimasukkan lewat chat
+        st.markdown(f"""
+        | Item | Detail |
+        | :--- | :--- |
+        | **Produk** | {bunga} |
+        | **Status** | Menunggu input jumlah tangkai di chat... |
+        """)
+        
     else:
-        orders = engine.parse_orders(user_input)
-        if orders:
-            st.subheader('Pesanan Anda:')
-            for order in orders:
-                st.info(f"{order['qty']} x {order['item'].title()} (Rp{order['price']})")
-        else:
-            st.warning('Maaf, saya tidak mengerti. Coba lagi.')
+        st.success("🛒 Keranjang kosong atau transaksi terakhir telah selesai dilakukan. Silakan ketik 'beli' di chatbot untuk mulai memesan.")
