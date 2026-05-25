@@ -1,9 +1,9 @@
 import streamlit as st
 from engine import Engine
-from st_pages import add_page_title
+# from st_pages import add_page_title
 
 st.set_page_config(page_title="Flower Store Chatbot", page_icon=":seedling:", layout="centered")
-add_page_title()
+# add_page_title()
 
 st.markdown("""
 <style>
